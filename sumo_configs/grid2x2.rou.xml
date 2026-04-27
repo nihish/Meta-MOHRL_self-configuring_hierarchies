@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<routes>
+    <!-- Vehicle types -->
+    <vType id="car" accel="2.6" decel="4.5" sigma="0.5" length="5.0"
+           minGap="2.5" maxSpeed="13.89" color="1,0.5,0.5" guiShape="passenger"/>
+    <vType id="truck" accel="1.3" decel="3.0" sigma="0.5" length="12.0"
+           minGap="3.0" maxSpeed="11.11" color="0.5,0.5,1" guiShape="truck"/>
+    <vType id="bus" accel="1.5" decel="3.5" sigma="0.5" length="15.0"
+           minGap="3.5" maxSpeed="12.50" color="0.5,1,0.5" guiShape="bus"/>
+
+    <!-- Horizontal flows (left to right) -->
+    <flow id="h1_car" type="car" from="left0A0" to="B1right1"
+          begin="0" end="3600" vehsPerHour="300" departSpeed="max" departLane="best"/>
+    <flow id="h1_truck" type="truck" from="left0A0" to="B1right1"
+          begin="0" end="3600" vehsPerHour="80" departSpeed="max" departLane="best"/>
+    <flow id="h2_car" type="car" from="left1A1" to="B0right0"
+          begin="0" end="3600" vehsPerHour="280" departSpeed="max" departLane="best"/>
+    <flow id="h2_bus" type="bus" from="left1A1" to="B0right0"
+          begin="0" end="3600" vehsPerHour="40" departSpeed="max" departLane="best"/>
+
+    <!-- Vertical flows (bottom to top) -->
+    <flow id="v1_car" type="car" from="bottom0A0" to="A1top1"
+          begin="0" end="3600" vehsPerHour="250" departSpeed="max" departLane="best"/>
+    <flow id="v1_truck" type="truck" from="bottom0A0" to="A1top1"
+          begin="0" end="3600" vehsPerHour="60" departSpeed="max" departLane="best"/>
+    <flow id="v2_car" type="car" from="bottom1B0" to="B1top1"
+          begin="0" end="3600" vehsPerHour="270" departSpeed="max" departLane="best"/>
+    <flow id="v2_bus" type="bus" from="bottom1B0" to="B1top1"
+          begin="0" end="3600" vehsPerHour="35" departSpeed="max" departLane="best"/>
+
+    <!-- Reverse flows -->
+    <flow id="rh1_car" type="car" from="right1B1" to="A0left0"
+          begin="0" end="3600" vehsPerHour="260" departSpeed="max" departLane="best"/>
+    <flow id="rv1_car" type="car" from="top1A1" to="A0bottom0"
+          begin="0" end="3600" vehsPerHour="220" departSpeed="max" departLane="best"/>
+</routes>
