@@ -1,90 +1,147 @@
-# Meta-MOHRL (Multi-Objective Hierarchical Reinforcement Learning)
+# Meta-MOHRL: Self-Configuring Hierarchies with Meta-Adaptive Hierarchical Reinforcement Learning
 
-This repository contains the clean implementation of the Meta-MOHRL algorithm for multi-objective traffic signal control, along with state-of-the-art baseline models (HIRO, HiPPO, DUSDi, MOSMAC). It includes the necessary environment configurations, the main training and evaluation scripts, and the experiment results.
+> **NeurIPS 2026 Submission**
 
-## Setup Instructions
+Meta-MOHRL is a meta-adaptive hierarchical reinforcement learning framework that learns temporal commitment intervals, per-level discount factors, and inter-level feedback gains as a function of task context via bilevel optimization. It wraps a three-level multi-objective cooperative hierarchy with a lightweight meta-controller that executes once per episode.
 
-### 1. Requirements
+## Repository Structure
 
-First, ensure you have Python 3.9+ installed. Install the necessary dependencies by running:
+```
+Meta-MOHRL-v2/
+├── reproduce.py                  # One-command reproduction & claim verification
+├── train.py                      # Meta-MOHRL bilevel training (Algorithm 1)
+├── train_baselines.py            # Baseline training (HIRO, HiPPO, DUSDi, MOSMAC)
+├── run_experiment.py             # Full experiment: all algorithms + evaluation
+├── evaluate.py                   # Post-training evaluation utilities
+├── plot_results.py               # Version 3 figure generation
+├── plot_seeds_and_pareto.py      # 5-seed convergence & Pareto plots
+├── requirements.txt              # Python dependencies
+│
+├── meta_mohrl/                   # Core framework
+│   ├── config.py                 # All hyperparameters
+│   ├── core/                     # Networks, replay buffer, Pareto utilities
+│   ├── meta_controller/          # Bilevel meta-controller + Gumbel-softmax
+│   ├── mohrl_ci/                 # 3-level hierarchy (high/mid/low + feedback)
+│   └── environment/              # SUMO-RL wrapper + topology generation
+│
+├── baselines/                    # HIRO, HiPPO, DUSDi, MOSMAC implementations
+│
+├── sumo_configs/                 # SUMO network files
+│   ├── 15_topologies/            # 15 randomized intersection layouts
+│   ├── grid2x2.net.xml           # 2×2 grid network
+│   └── single_intersection.*     # Single 4-way intersection
+│
+├── results/                      # 5-seed experiment records (seeds 42–46)
+│   └── experiment_record_seed*.json
+│
+└── figures/                      # Publication figures (Version 3)
+    ├── version_3_reward_overall_convergence.png
+    ├── version_3_ablation_study.png
+    ├── version_3_meta_learning_adaptation.png
+    ├── version_3_config_gamma_adaptation.png
+    ├── version_3_multi_agent_decentralization.png
+    ├── version_3_hypervolume_optimization.png
+    ├── version_3_radar_comparison.png
+    ├── version_3_reward_distributions.png
+    ├── meta_mohrl_5seeds_convergence.png
+    └── meta_mohrl_pareto_improved.png
+```
+
+## Quick Start
+
+### 1. Install Dependencies
 
 ```bash
 pip install -r requirements.txt
 ```
 
-### 2. Environment (SUMO)
+### 2. Install SUMO
 
-The environment relies on Eclipse SUMO (Simulation of Urban MObility). 
-1. Install SUMO from [the official website](https://eclipse.dev/sumo/).
-2. Make sure you set the `SUMO_HOME` environment variable to your SUMO installation directory. For example, on Windows:
+Install [Eclipse SUMO](https://eclipse.dev/sumo/) and set the `SUMO_HOME` environment variable:
+
 ```bash
+# Windows
 set SUMO_HOME=C:\Program Files (x86)\Eclipse\Sumo
+
+# Linux
+export SUMO_HOME=/usr/share/sumo
 ```
-*(You may need to update the `sumo_home` path in `meta_mohrl/config.py` depending on your installation location).*
 
-## Running the Experiment
-
-We provide two primary scripts for training:
-
-### Option 1: Standard Training Loop (`train.py`)
-This script runs the standard bilevel training loop (Algorithm 1) for the Meta-MOHRL framework.
+### 3. Verify Manuscript Claims (no training needed)
 
 ```bash
-python train.py --episodes 100 --meta-iters 50 --inner-steps 5 --net single --ablation full
+python reproduce.py --verify
 ```
-**Arguments:**
-- `--episodes`: Episodes per inner loop (default: 100).
-- `--meta-iters`: Outer loop iterations (default: 50).
-- `--inner-steps`: Inner gradient steps (default: 5).
-- `--net`: Network topology (`single` or `grid2x2`).
-- `--ablation`: Run different ablations (`full`, `no_meta`, `no_feedback`, `no_context`, `no_pareto`).
-- `--use-gui`: Add this flag to visualize the SUMO simulation.
 
-### Option 2: Full Experiment Runner (`run_experiment.py`)
-This script runs an automated long-running experiment (e.g., 4,000 episodes) for Meta-MOHRL, its ablation variants, and all baseline algorithms. It saves a comprehensive JSON record and evaluates the learned policies on 15 randomized topologies.
+This checks all numerical claims (Q1–Q5) against the saved 5-seed results.
+
+### 4. Regenerate Figures
 
 ```bash
-python run_experiment.py
+python reproduce.py --plot-only
 ```
 
-### Option 3: Train Baseline Algorithms (`train_baselines.py`)
-This script allows you to train the individual baseline models (HIRO, HiPPO, DUSDi, MOSMAC) independently.
+### 5. Full Training Reproduction
 
 ```bash
-python train_baselines.py
+python reproduce.py                    # All 5 seeds (~15h per seed)
+python reproduce.py --seeds 42         # Single seed (~15h)
 ```
 
-## Included Results
+## Environment
 
-The `figures` folder contains the final publication-quality graphs from the full 4,000-episode experiment. These plots showcase convergence metrics, Pareto fronts, hypervolume optimization, and radar comparisons across all baselines and variants.
+- **Simulation**: SUMO-RL, 4-way signalized intersection, 4 cooperative agents
+- **Episode**: 3,600 simulation seconds (200 decision steps at Δt = 5s)
+- **Training**: 4,000 episodes per algorithm, 15 meta-iterations
+- **Topologies**: 15 randomized layouts (symmetric grids, asymmetric arterials, heterogeneous meshes, bottleneck grids)
+- **Objectives**: Speed (Level 1), Waiting Time (Level 2), Queue Length (Level 3)
+- **Vehicle Fleet**: Cars (70%), Trucks (20%), Buses (10%)
 
-## Hyperparameters and Environment Details
+## Hardware
 
-### Meta-Controller Hyperparameters
-- Task Descriptor Dimension: 5
-- Embedding Dimension: 64
-- Meta MLP Hidden Units: 128
-- Gumbel-Softmax Anneal Steps: 500
-- Outer Learning Rate: 1e-3
-- Inner Learning Rate: 3e-4
-- Meta Gradient Clip: 1.0
+All experiments were conducted on a consumer laptop:
+- **ASUS Zenbook Duo UX8406MA**
+- **Intel Core Ultra 9 185H** (16 cores, 22 threads)
+- **32 GB RAM**, Intel Arc integrated graphics
+- No dedicated GPU required
 
-### MOHRL-ci (Inner Loop) Hyperparameters
-- Hierarchy Levels: 3 (High, Mid, Low)
-- Actor/Critic Hidden Units: 256
-- LSTM Hidden Units: 128
-- Context / Memory Dim: 64
-- Goal Dimension: 16
-- Memory Capacity: 500 tuples
-- Replay Buffer Size: 100,000
-- Batch Size: 64
-- Actor/Critic Learning Rate: 3e-4
+## Hyperparameters
 
-### Environment Configuration
-- Objectives: 3 (Speed, Waiting Time, Queue Length)
-- Simulation Time: 3600 seconds
-- Delta Time (Decision Interval): 5 seconds
-- Minimum/Maximum Green Time: 5s / 60s
-- Yellow Time: 2s
-- Actions: 4 signal phases
-- Vehicle Mix: 70% cars, 20% trucks, 10% buses
+### Meta-Controller (Outer Loop)
+| Parameter | Value |
+|---|---|
+| Meta learning rate | 5 × 10⁻⁴ |
+| Meta iterations | 15 |
+| Inner gradient steps (K) | 5 |
+| Task descriptor dim | 5 |
+| Embedding dim | 64 |
+| MLP hidden | 128 |
+| Gumbel temp (init → min) | 5.0 → 0.5 |
+| T¹ bounds | [10, 50] steps |
+| T² bounds | [3, 10] steps |
+| γ bounds | (0.90, 0.995) |
+| β bounds | (0.0, 1.0) |
+
+### Inner Loop (3-Level Hierarchy)
+| Parameter | Value |
+|---|---|
+| Optimizer | Adam |
+| Learning rate | 3 × 10⁻⁴ |
+| Actor/Critic hidden | 256 |
+| LSTM hidden | 128 |
+| Replay buffer | 100,000 |
+| Batch size | 64 |
+| Critic Polyak τ | 0.005 |
+
+## Baselines
+
+| Method | Architecture | Reference |
+|---|---|---|
+| HIRO | 2-level hierarchy, fixed T | Nachum et al., NeurIPS 2018 |
+| HiPPO | Multi-level PPO, fixed T | Zhang et al., Pattern Recognition 2025 |
+| DUSDi | Unsupervised skill discovery | Hu et al., NeurIPS 2024 |
+| MOSMAC | Flat multi-objective MARL | Geng et al., AAMAS 2025 |
+
+## License
+
+This repository is provided for anonymous peer review.

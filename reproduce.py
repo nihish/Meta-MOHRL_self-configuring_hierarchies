@@ -7,9 +7,14 @@ Usage:
     python reproduce.py --plot-only         # Regenerate figures from existing results
     python reproduce.py --verify            # Verify claims against saved results
 
-Requirements:
+Environment:
     pip install -r requirements.txt
     SUMO must be installed and SUMO_HOME set (or libsumo available).
+
+Hardware used in paper:
+    ASUS Zenbook Duo UX8406MA, Intel Core Ultra 9 185H (16C/22T),
+    Intel Arc integrated graphics, 32 GB RAM, Windows 11.
+    No dedicated GPU required.
 """
 
 import argparse
@@ -22,6 +27,11 @@ import numpy as np
 SEEDS = [42, 43, 44, 45, 46]
 RESULTS_DIR = "results"
 FIGURES_DIR = "figures"
+TOPO_DIR = os.path.join("sumo_configs", "15_topologies")
+NUM_EPISODES = 4000
+SUMO_SIM_SECONDS = 3600   # 1-hour SUMO simulation per episode
+DELTA_TIME = 5             # seconds per decision step
+DECISION_STEPS = SUMO_SIM_SECONDS // DELTA_TIME  # 720 design; 200 actual training
 
 
 def run_training(seeds):
@@ -53,6 +63,16 @@ def verify_claims():
     errors = []
     warnings = []
 
+    # --- Check 15 topologies exist ---
+    print("\n[Topology Check]")
+    if os.path.isdir(TOPO_DIR):
+        topos = [f for f in os.listdir(TOPO_DIR) if f.endswith(".net.xml")]
+        print(f"  Found {len(topos)} topologies in {TOPO_DIR}")
+        if len(topos) != 15:
+            warnings.append(f"Expected 15 topologies, found {len(topos)}")
+    else:
+        warnings.append(f"Topology directory not found: {TOPO_DIR}")
+
     # Load all seeds
     all_records = {}
     for seed in SEEDS:
@@ -73,7 +93,7 @@ def verify_claims():
     ]
 
     # --- Q1: Overall Performance ---
-    print("\n[Q1] Overall Performance")
+    print("\n[Q1] Overall Performance (last 25% of training)")
     for name in algos_to_check:
         totals = []
         for seed, rec in all_records.items():
@@ -86,8 +106,8 @@ def verify_claims():
         std_t = np.std(totals)
         print(f"  {name:20s}: total = {mean_t:+.1f} +/- {std_t:.1f}")
 
-    # --- Q2: Ablation ---
-    print("\n[Q2] Ablation Analysis")
+    # --- Q2: Ablation (Hypervolume) ---
+    print("\n[Q2] Ablation — Hypervolume Indicator")
     for name in ["Meta-MOHRL", "Ablation-NoMeta", "Ablation-NoFB"]:
         hvs = []
         for seed, rec in all_records.items():
@@ -114,18 +134,33 @@ def verify_claims():
 
     # --- Q4: T1 ~ sqrt(H) ---
     print("\n[Q4] T1 proportional to sqrt(H)")
-    # H is the episode horizon in simulation seconds (3600s),
-    # not decision steps (max_steps=200 at delta_time=5s)
-    DELTA_TIME = 5
-    H_sim_seconds = seed42["max_steps"] * DELTA_TIME  # 200 * 5 = 1000
-    # But SUMO runs for num_seconds=3600; use that as true H
-    H = 3600  # 1-hour SUMO simulation
+    H = SUMO_SIM_SECONDS  # 3600 simulation seconds
     sqrt_H = np.sqrt(H)
     T1_final = c_last["T1"]
-    print(f"  H = {H}, sqrt(H) = {sqrt_H:.0f}, T1_final = {T1_final}")
+    print(f"  H = {H} sim-seconds, sqrt(H) = {sqrt_H:.0f}, T1_final = {T1_final}")
     print(f"  T1/sqrt(H) = {T1_final/sqrt_H:.2f} (same order: OK)"
           if 0.3 < T1_final / sqrt_H < 3.0
           else f"  WARNING: T1/sqrt(H) = {T1_final/sqrt_H:.2f} — outside expected range")
+
+    # --- Q5: Pareto Hypervolume (all algorithms) ---
+    print("\n[Q5] Pareto Hypervolume (all algorithms)")
+    for name in algos_to_check:
+        hvs = []
+        for seed, rec in all_records.items():
+            hvs.append(rec["algorithms"][name]["final_metrics"]["hypervolume"])
+        print(f"  {name:20s}: HV = {np.mean(hvs):.2f}")
+
+    # --- Seed consistency ---
+    print(f"\n[Reproducibility] {len(all_records)} of 5 seeds loaded")
+    totals_per_seed = []
+    for seed, rec in all_records.items():
+        eps = rec["algorithms"]["Meta-MOHRL"]["episodes"]
+        n = len(eps)
+        start = int(n * 0.75)
+        t = np.mean([e["total_reward"] for e in eps[start:]])
+        totals_per_seed.append(t)
+        print(f"  Seed {seed}: Meta-MOHRL total = {t:+.1f}")
+    print(f"  Cross-seed std = {np.std(totals_per_seed):.2f}")
 
     # --- Summary ---
     print(f"\n{'='*60}")
