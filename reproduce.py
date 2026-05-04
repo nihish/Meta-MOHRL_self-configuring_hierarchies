@@ -114,7 +114,12 @@ def verify_claims():
 
     # --- Q4: T1 ~ sqrt(H) ---
     print("\n[Q4] T1 proportional to sqrt(H)")
-    H = seed42["max_steps"]
+    # H is the episode horizon in simulation seconds (3600s),
+    # not decision steps (max_steps=200 at delta_time=5s)
+    DELTA_TIME = 5
+    H_sim_seconds = seed42["max_steps"] * DELTA_TIME  # 200 * 5 = 1000
+    # But SUMO runs for num_seconds=3600; use that as true H
+    H = 3600  # 1-hour SUMO simulation
     sqrt_H = np.sqrt(H)
     T1_final = c_last["T1"]
     print(f"  H = {H}, sqrt(H) = {sqrt_H:.0f}, T1_final = {T1_final}")
