@@ -1,6 +1,6 @@
 # Meta-MOHRL (Multi-Objective Hierarchical Reinforcement Learning)
 
-This repository contains the clean implementation of the Meta-MOHRL algorithm for multi-objective traffic signal control, along with state-of-the-art baseline models (HIRO, HiPPO, DUSDi, MOSMAC). It includes the necessary environment configurations, the main training and evaluation scripts, and the official Version 4 experiment results.
+This repository contains the clean implementation of the Meta-MOHRL algorithm for multi-objective traffic signal control, along with state-of-the-art baseline models (HIRO, HiPPO, DUSDi, MOSMAC). It includes the necessary environment configurations, the main training and evaluation scripts, and the experiment results.
 
 ## Setup Instructions
 
@@ -56,7 +56,7 @@ python train_baselines.py
 
 ## Included Results
 
-The `version_4_results/` folder contains the final publication-quality graphs from the full 4,000-episode experiment. These plots showcase convergence metrics, Pareto fronts, hypervolume optimization, and radar comparisons across all baselines and variants.
+The `figures` folder contains the final publication-quality graphs from the full 4,000-episode experiment. These plots showcase convergence metrics, Pareto fronts, hypervolume optimization, and radar comparisons across all baselines and variants.
 
 ## Hyperparameters and Environment Details
 

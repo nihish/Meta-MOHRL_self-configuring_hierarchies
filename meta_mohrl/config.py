@@ -42,8 +42,9 @@ class MOHRLConfig:
     beta23_default: float = 0.5   # mid  ← low
 
     # --- Learning ---
-    actor_lr: float = 3e-4        # high-level LR (stabilized for 4k episodes)
-    critic_lr: float = 3e-4       # low-level LR / critic LR (stabilized for 4k episodes)
+    high_lr: float = 5e-4         # high-level LR
+    mid_lr: float = 5e-4          # mid-level LR
+    low_lr: float = 1e-3          # low-level LR
     batch_size: int = 64
     replay_buffer_size: int = 100_000
     target_update_tau: float = 0.005  # soft target network update
@@ -72,25 +73,24 @@ class MetaConfig:
     K_max: int = 5                # max objectives for normalization
 
     # --- Meta-Controller ---
-    meta_hidden: int = 128        # meta-controller MLP hidden
-    commitment_candidates: List[int] = field(
-        default_factory=lambda: [1, 2, 5, 10, 20, 50]
-    )
-    gamma_range: Tuple[float, float] = (0.90, 0.999)  # γ ∈ (0.90, 0.999)
+    meta_hidden: int = 64         # meta-controller MLP hidden [64, 64]
+    T1_candidates: List[int] = field(default_factory=lambda: [10, 20, 50])
+    T2_candidates: List[int] = field(default_factory=lambda: [3, 5, 10])
+    gamma_range: Tuple[float, float] = (0.90, 0.995)  # γ ∈ (0.90, 0.995)
 
     # --- Gumbel-Softmax ---
-    gumbel_tau_start: float = 1.0
+    gumbel_tau_start: float = 5.0
     gumbel_tau_min: float = 0.5
-    gumbel_anneal_steps: int = 500  # anneal over 500 meta-iterations
+    gumbel_decay_rate: float = 0.9  # per iter decay
 
     # --- Bilevel Optimization ---
     inner_steps: int = 5          # K = 5 inner gradient steps
     alpha_in: float = 3e-4        # inner learning rate
-    alpha_out: float = 1e-3       # outer (meta) learning rate
+    alpha_out: float = 5e-4       # outer (meta) learning rate
     soft_update_lambda: float = 0.1  # θ₀ soft-update weight
 
     # --- Training ---
-    num_meta_iterations: int = 50   # prototype: 50 (paper: 500)
+    num_meta_iterations: int = 15   # paper: 15
     meta_grad_clip: float = 1.0
 
     device: str = "cuda" if torch.cuda.is_available() else "cpu"

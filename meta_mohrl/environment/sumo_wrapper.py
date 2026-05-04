@@ -122,12 +122,17 @@ class MultiObjectiveSumoEnv:
                 self._initial_states.append(obs.copy())
                 return obs, info
             else:
-                observations = self.env.reset()
+                reset_res = self.env.reset()
+                if isinstance(reset_res, tuple) and len(reset_res) == 2:
+                    observations, info = reset_res
+                else:
+                    observations, info = reset_res, {}
+                
                 self._num_agents = len(self.env.agents) if hasattr(self.env, 'agents') else 4
                 first_obs = list(observations.values())[0] if isinstance(observations, dict) else observations
                 if isinstance(first_obs, np.ndarray):
                     self._obs_dim = len(first_obs)
-                return observations, {}
+                return observations, info
         else:
             # Mock reset
             self._step_count = 0
@@ -171,8 +176,13 @@ class MultiObjectiveSumoEnv:
                     self.env.step(action)
                 # Multi-agent: compute multi-objective reward per agent
                 mo_rewards = {}
-                for agent_id in (self.env.agents if hasattr(self.env, 'agents') else []):
-                    ts = self.env.traffic_signals.get(agent_id)
+                base_env = getattr(self.env, 'unwrapped', self.env)
+                agents_list = list(observations.keys()) if isinstance(observations, dict) else getattr(base_env, 'agents', [])
+                if not agents_list and hasattr(self.env, 'agents'):
+                    agents_list = self.env.agents
+                
+                for agent_id in agents_list:
+                    ts = getattr(base_env, 'traffic_signals', {}).get(agent_id)
                     if ts:
                         mo_rewards[agent_id] = np.array([
                             speed_reward(ts),

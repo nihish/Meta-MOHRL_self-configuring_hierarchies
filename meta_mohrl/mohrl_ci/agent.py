@@ -69,7 +69,7 @@ class MOHRLciAgent:
             hidden_dim=config.actor_hidden,
             lstm_hidden=config.lstm_hidden,
             goal_dim=config.goal_dim,
-            lr=config.actor_lr,
+            lr=config.high_lr,
             device=self.device
         )
 
@@ -81,7 +81,7 @@ class MOHRLciAgent:
             hidden_dim=config.actor_hidden,
             lstm_hidden=config.lstm_hidden,
             subgoal_dim=config.goal_dim,
-            lr=config.actor_lr,
+            lr=config.mid_lr,
             device=self.device
         )
 
@@ -93,7 +93,7 @@ class MOHRLciAgent:
             num_objectives=config.num_objectives,
             hidden_dim=config.actor_hidden,
             lstm_hidden=config.lstm_hidden,
-            lr=config.critic_lr,
+            lr=config.low_lr,
             device=self.device
         )
 

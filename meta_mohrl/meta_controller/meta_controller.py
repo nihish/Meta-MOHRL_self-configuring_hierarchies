@@ -53,17 +53,17 @@ class MetaController(nn.Module):
         # --- Output Head 1: Commitment Intervals (Gumbel-softmax) ---
         self.T1_selector = GumbelSoftmaxSelector(
             config.meta_hidden,
-            config.commitment_candidates,
+            config.T1_candidates,
             config.gumbel_tau_start,
             config.gumbel_tau_min,
-            config.gumbel_anneal_steps
+            config.gumbel_decay_rate
         )
         self.T2_selector = GumbelSoftmaxSelector(
             config.meta_hidden,
-            config.commitment_candidates,
+            config.T2_candidates,
             config.gumbel_tau_start,
             config.gumbel_tau_min,
-            config.gumbel_anneal_steps
+            config.gumbel_decay_rate
         )
 
         # --- Output Head 2: Discount Factors ---

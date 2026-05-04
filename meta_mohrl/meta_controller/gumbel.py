@@ -24,9 +24,9 @@ class GumbelSoftmaxSelector(nn.Module):
         self,
         input_dim: int,
         candidates: List[int],
-        tau_start: float = 1.0,
+        tau_start: float = 5.0,
         tau_min: float = 0.5,
-        anneal_steps: int = 500
+        decay_rate: float = 0.9
     ):
         super().__init__()
         self.candidates = candidates
@@ -37,9 +37,9 @@ class GumbelSoftmaxSelector(nn.Module):
         self.logit_head = nn.Linear(input_dim, self.num_candidates)
 
         # Temperature annealing
-        self.tau_start = tau_start
+        self.tau = tau_start
         self.tau_min = tau_min
-        self.anneal_steps = anneal_steps
+        self.decay_rate = decay_rate
         self._current_step = 0
 
     def forward(
@@ -84,18 +84,12 @@ class GumbelSoftmaxSelector(nn.Module):
         return selected_T, probs
 
     def get_temperature(self) -> float:
-        """Get current annealing temperature.
-
-        τ(e) = max(0.5, 1 - e/500)
-        """
-        tau = max(
-            self.tau_min,
-            self.tau_start - self._current_step / self.anneal_steps
-        )
-        return tau
+        """Get current annealing temperature."""
+        return max(self.tau_min, self.tau)
 
     def step_annealing(self):
         """Advance annealing schedule by one step."""
+        self.tau *= self.decay_rate
         self._current_step += 1
 
     def get_hard_selection(self, z: torch.Tensor) -> int:

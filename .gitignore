@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Logs
+*.log
+training_log.txt
+training_error.txt
+sumo_error.log
+autopilot_log.txt
+autopilot_error.txt
+
+# SUMO temp files
+*.sumocfg
+*.tripinfo.xml

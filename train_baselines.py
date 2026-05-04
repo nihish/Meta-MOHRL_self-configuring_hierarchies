@@ -45,12 +45,12 @@ def create_env(args) -> MultiObjectiveSumoEnv:
     config_dir = os.path.join(PROJECT_ROOT, 'sumo_configs')
     os.makedirs(config_dir, exist_ok=True)
 
-    net_file = os.path.join(config_dir, 'single_intersection.net.xml')
-    route_file = os.path.join(config_dir, 'single_intersection.rou.xml')
+    net_file = os.path.join(config_dir, 'grid2x2.net.xml')
+    route_file = os.path.join(config_dir, 'grid2x2.rou.xml')
 
     if not os.path.exists(net_file):
-        from meta_mohrl.environment.generate_configs import generate_single_intersection
-        generate_single_intersection(config_dir)
+        from meta_mohrl.environment.generate_configs import generate_grid_2x2
+        generate_grid_2x2(config_dir)
 
     return MultiObjectiveSumoEnv(
         net_file=net_file,
@@ -58,7 +58,7 @@ def create_env(args) -> MultiObjectiveSumoEnv:
         num_seconds=3600,
         delta_time=5,
         use_gui=args.use_gui,
-        single_agent=True,
+        single_agent=False,
         sumo_seed=args.seed,
     )
 
@@ -74,21 +74,41 @@ def train_baseline(agent, env, args, name: str) -> dict:
 
     for ep in range(args.episodes):
         start = time.time()
-        obs, _ = env.reset()
+        obs_dict, _ = env.reset()
         agent.reset()
 
         total_rewards = np.zeros(3)
         step = 0
         done = False
+        
+        agents = list(obs_dict.keys()) if isinstance(obs_dict, dict) else [0]
 
         while not done and step < args.max_steps:
-            action = agent.act(obs)
-            next_obs, reward_vec, terminated, truncated, info = env.step(action)
-            done = terminated or truncated
+            action_dict = {}
+            for a_id in agents:
+                obs_a = obs_dict[a_id] if isinstance(obs_dict, dict) else obs_dict
+                action_dict[a_id] = agent.act(obs_a)
+                
+            action_input = action_dict if isinstance(obs_dict, dict) else action_dict[0]
+            next_obs_dict, reward_dict, terminated, truncated, info = env.step(action_input)
+            
+            if isinstance(terminated, dict):
+                done = all(terminated.values()) or all(truncated.values())
+            else:
+                done = terminated or truncated
 
-            agent.observe(obs, action, reward_vec, next_obs, done)
-            total_rewards += reward_vec
-            obs = next_obs
+            step_reward_vec = np.zeros(3)
+            for a_id in agents:
+                n_obs = next_obs_dict[a_id] if isinstance(next_obs_dict, dict) else next_obs_dict
+                r_vec = reward_dict[a_id] if isinstance(reward_dict, dict) else reward_dict
+                act = action_dict[a_id]
+                o = obs_dict[a_id] if isinstance(obs_dict, dict) else obs_dict
+
+                agent.observe(o, act, r_vec, n_obs, done)
+                step_reward_vec += r_vec
+
+            total_rewards += step_reward_vec
+            obs_dict = next_obs_dict
             step += 1
 
             if step % 10 == 0:

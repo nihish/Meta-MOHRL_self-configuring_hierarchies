@@ -19,9 +19,9 @@
           begin="0" end="3600" vehsPerHour="40" departSpeed="max" departLane="best"/>
 
     <!-- Vertical flows (bottom to top) -->
-    <flow id="v1_car" type="car" from="bottom0A0" to="A1top1"
+    <flow id="v1_car" type="car" from="bottom0A0" to="A1top0"
           begin="0" end="3600" vehsPerHour="250" departSpeed="max" departLane="best"/>
-    <flow id="v1_truck" type="truck" from="bottom0A0" to="A1top1"
+    <flow id="v1_truck" type="truck" from="bottom0A0" to="A1top0"
           begin="0" end="3600" vehsPerHour="60" departSpeed="max" departLane="best"/>
     <flow id="v2_car" type="car" from="bottom1B0" to="B1top1"
           begin="0" end="3600" vehsPerHour="270" departSpeed="max" departLane="best"/>
@@ -31,6 +31,6 @@
     <!-- Reverse flows -->
     <flow id="rh1_car" type="car" from="right1B1" to="A0left0"
           begin="0" end="3600" vehsPerHour="260" departSpeed="max" departLane="best"/>
-    <flow id="rv1_car" type="car" from="top1A1" to="A0bottom0"
+    <flow id="rv1_car" type="car" from="top0A1" to="A0bottom0"
           begin="0" end="3600" vehsPerHour="220" departSpeed="max" departLane="best"/>
 </routes>

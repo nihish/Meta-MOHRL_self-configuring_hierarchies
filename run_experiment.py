@@ -40,10 +40,10 @@ from baselines.mosmac import MOSMACAgent
 
 # ──────────────────── Configuration ────────────────────
 SEED = 42
-NUM_EPISODES = 4000        # Full 4K organic depth
+NUM_EPISODES = 20          # Reduced for quick verification run
 MAX_STEPS = 200            # Steps per episode at delta_time=5
-META_ITERS = 15            # Meta-controller outer loop iterations
-INNER_STEPS = 3            # Inner gradient steps per meta iteration
+META_ITERS = 2             # Meta-controller outer loop iterations
+INNER_STEPS = 2            # Inner gradient steps per meta iteration
 NUM_SECONDS = 1000         # SUMO simulation seconds per episode
 DELTA_TIME = 5
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
@@ -98,12 +98,12 @@ def save_record(all_records, path=None):
 def make_env():
     """Create natively executed SUMO-RL environment (single-agent schema)."""
     config_dir = os.path.join(PROJECT_ROOT, "sumo_configs")
-    net_file = os.path.join(config_dir, "single_intersection.net.xml")
-    route_file = os.path.join(config_dir, "single_intersection.rou.xml")
+    net_file = os.path.join(config_dir, "grid2x2.net.xml")
+    route_file = os.path.join(config_dir, "grid2x2.rou.xml")
 
     if not os.path.exists(net_file):
-        from meta_mohrl.environment.generate_configs import generate_single_intersection
-        generate_single_intersection(config_dir)
+        from meta_mohrl.environment.generate_configs import generate_grid_2x2
+        generate_grid_2x2(config_dir)
 
     return MultiObjectiveSumoEnv(
         net_file=net_file,
@@ -111,7 +111,7 @@ def make_env():
         num_seconds=NUM_SECONDS,
         delta_time=DELTA_TIME,
         use_gui=False,
-        single_agent=True,
+        single_agent=False,
         sumo_seed=SEED,
     )
 
@@ -124,7 +124,7 @@ def make_topo_env(net_file, route_file):
         num_seconds=NUM_SECONDS,
         delta_time=DELTA_TIME,
         use_gui=False,
-        single_agent=True,
+        single_agent=False,
         sumo_seed=SEED,
     )
 
@@ -142,7 +142,7 @@ def format_eta(elapsed, done, total):
 # ─────── Episode runner shared by all algorithms ───────
 def run_episode(agent, env, algorithm_name, train=True, epsilon=0.0):
     """Run one episode, return per-step and summary metrics."""
-    obs, info = env.reset()
+    obs_dict, info = env.reset()
     agent.reset()
 
     total_rewards = np.zeros(3)
@@ -150,33 +150,52 @@ def run_episode(agent, env, algorithm_name, train=True, epsilon=0.0):
     step = 0
     done = False
 
+    agents = list(obs_dict.keys()) if isinstance(obs_dict, dict) else [0]
+    
     while not done and step < MAX_STEPS:
-        if algorithm_name == "Meta-MOHRL":
-            action = agent.act(obs, epsilon=epsilon)
-        else:
-            try:
-                action = agent.act(obs, epsilon=epsilon)
-            except TypeError:
-                action = agent.act(obs)
-        next_obs, reward_vec, terminated, truncated, info = env.step(action)
-        done = terminated or truncated
-
-        if hasattr(agent, 'observe'):
-            if algorithm_name == "Meta-MOHRL" or algorithm_name.startswith("Ablation"):
-                omega = agent.pareto_fronts['high'].sample_preference()
-                agent.observe(obs, action, reward_vec, next_obs, done, omega)
+        action_dict = {}
+        for a_id in agents:
+            obs_a = obs_dict[a_id] if isinstance(obs_dict, dict) else obs_dict
+            if algorithm_name == "Meta-MOHRL":
+                action_dict[a_id] = agent.act(obs_a, epsilon=epsilon)
             else:
-                agent.observe(obs, action, reward_vec, next_obs, done)
+                try:
+                    action_dict[a_id] = agent.act(obs_a, epsilon=epsilon)
+                except TypeError:
+                    action_dict[a_id] = agent.act(obs_a)
+        
+        # Action is dict if multi-agent
+        action_input = action_dict if isinstance(obs_dict, dict) else action_dict[0]
+        next_obs_dict, reward_dict, terminated, truncated, info = env.step(action_input)
+        
+        if isinstance(terminated, dict):
+            done = all(terminated.values()) or all(truncated.values())
+        else:
+            done = terminated or truncated
 
-        total_rewards += reward_vec
+        step_reward_vec = np.zeros(3)
+        for a_id in agents:
+            n_obs = next_obs_dict[a_id] if isinstance(next_obs_dict, dict) else next_obs_dict
+            r_vec = reward_dict[a_id] if isinstance(reward_dict, dict) else reward_dict
+            act = action_dict[a_id]
+            o = obs_dict[a_id] if isinstance(obs_dict, dict) else obs_dict
+            
+            if hasattr(agent, 'observe'):
+                if algorithm_name == "Meta-MOHRL" or algorithm_name.startswith("Ablation"):
+                    omega = agent.pareto_fronts['high'].sample_preference()
+                    agent.observe(o, act, r_vec, n_obs, done, omega)
+                else:
+                    agent.observe(o, act, r_vec, n_obs, done)
+            step_reward_vec += r_vec
+
+        total_rewards += step_reward_vec
         step_records.append({
             "step": step,
-            "speed": float(reward_vec[0]),
-            "waiting": float(reward_vec[1]),
-            "queue": float(reward_vec[2]),
-            "action": int(action),
+            "speed": float(step_reward_vec[0]),
+            "waiting": float(step_reward_vec[1]),
+            "queue": float(step_reward_vec[2]),
         })
-        obs = next_obs
+        obs_dict = next_obs_dict
         step += 1
 
         # Train every 10 steps if in training mode
@@ -276,18 +295,32 @@ def run_meta_mohrl(env, obs_dim, num_actions, label="Meta-MOHRL",
                   f"que={ep_result['queue_reward']:.3f}) "
                   f"ETA={eta}")
 
-        # Meta-gradient update
+        # True Bilevel Meta-Gradient (REINFORCE)
         meta_loss_val = 0.0
         if ablation not in ("no_meta",):
             cfg_out = meta_ctrl(desc_t, hard=False)
-            j_inner = torch.tensor(np.mean(inner_rewards),
-                                   dtype=torch.float32, device=DEVICE)
-            meta_loss = -j_inner
-            T1_ent = -(cfg_out['T1_probs'] *
-                       (cfg_out['T1_probs'] + 1e-8).log()).sum()
-            T2_ent = -(cfg_out['T2_probs'] *
-                       (cfg_out['T2_probs'] + 1e-8).log()).sum()
+            j_inner = torch.tensor(np.mean(inner_rewards), dtype=torch.float32, device=DEVICE)
+            
+            # Baseline for REINFORCE
+            if not hasattr(meta_ctrl, 'baseline'):
+                meta_ctrl.baseline = j_inner.item()
+            else:
+                meta_ctrl.baseline = 0.9 * meta_ctrl.baseline + 0.1 * j_inner.item()
+            
+            advantage = j_inner - meta_ctrl.baseline
+            
+            # Get log prob of selected T1 and T2
+            T1_idx = meta_ctrl.T1_selector.candidates.index(cfg['T1'])
+            T2_idx = meta_ctrl.T2_selector.candidates.index(cfg['T2'])
+            
+            log_prob = torch.log(cfg_out['T1_probs'][0, T1_idx] + 1e-8) + torch.log(cfg_out['T2_probs'][0, T2_idx] + 1e-8)
+            
+            meta_loss = -log_prob * advantage.detach()
+            
+            T1_ent = -(cfg_out['T1_probs'] * (cfg_out['T1_probs'] + 1e-8).log()).sum()
+            T2_ent = -(cfg_out['T2_probs'] * (cfg_out['T2_probs'] + 1e-8).log()).sum()
             meta_loss = meta_loss - 0.01 * (T1_ent + T2_ent)
+            
             meta_opt.zero_grad()
             meta_loss.backward()
             torch.nn.utils.clip_grad_norm_(meta_ctrl.parameters(), 1.0)
@@ -451,8 +484,20 @@ def evaluate_on_topologies(agent, algorithm_name, num_eval_episodes=3):
 
 
 # ───────────────────── Main Experiment ─────────────────────
+import argparse
+
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--seeds', type=int, nargs='+', default=[42, 43, 44, 45, 46])
+    args = parser.parse_args()
+    
+    for seed in args.seeds:
+        run_experiment_for_seed(seed)
+
+def run_experiment_for_seed(SEED):
     set_seed(SEED)
+    global RECORD_FILE
+    RECORD_FILE = os.path.join(RESULTS_DIR, f"experiment_record_seed{SEED}.json")
     os.makedirs(RESULTS_DIR, exist_ok=True)
     os.makedirs(FIGURES_DIR, exist_ok=True)
 

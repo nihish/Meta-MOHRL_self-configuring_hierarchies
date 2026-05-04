@@ -39,8 +39,8 @@ def parse_args():
     parser.add_argument('--meta-iters', type=int, default=50, help='Outer loop iterations')
     parser.add_argument('--inner-steps', type=int, default=5, help='Inner gradient steps K')
     parser.add_argument('--use-gui', action='store_true', help='Show SUMO GUI')
-    parser.add_argument('--seed', type=int, default=42)
-    parser.add_argument('--net', type=str, default='single', choices=['single', 'grid2x2'])
+    parser.add_argument('--seeds', type=int, nargs='+', default=[42, 43, 44, 45, 46])
+    parser.add_argument('--net', type=str, default='grid2x2', choices=['single', 'grid2x2'])
     parser.add_argument('--ablation', type=str, default='full',
                         choices=['full', 'no_meta', 'no_feedback', 'no_context', 'no_pareto'])
     parser.add_argument('--save-dir', type=str, default='results')
@@ -97,24 +97,42 @@ def run_episode(
     max_steps: int = 720
 ) -> dict:
     """Run one episode, collecting data and optionally training."""
-    obs, info = env.reset()
+    obs_dict, info = env.reset()
     agent.reset()
 
     total_rewards = np.zeros(3)
     step = 0
     done = False
+    
+    agents = list(obs_dict.keys()) if isinstance(obs_dict, dict) else [0]
 
     while not done and step < max_steps:
-        action = agent.act(obs)
-        next_obs, reward_vec, terminated, truncated, info = env.step(action)
-        done = terminated or truncated
+        action_dict = {}
+        for a_id in agents:
+            obs_a = obs_dict[a_id] if isinstance(obs_dict, dict) else obs_dict
+            action_dict[a_id] = agent.act(obs_a)
+            
+        action_input = action_dict if isinstance(obs_dict, dict) else action_dict[0]
+        next_obs_dict, reward_dict, terminated, truncated, info = env.step(action_input)
+        
+        if isinstance(terminated, dict):
+            done = all(terminated.values()) or all(truncated.values())
+        else:
+            done = terminated or truncated
 
-        # Sample preference from Pareto front
-        omega = agent.pareto_fronts['high'].sample_preference()
-        agent.observe(obs, action, reward_vec, next_obs, done, omega)
+        step_reward_vec = np.zeros(3)
+        for a_id in agents:
+            n_obs = next_obs_dict[a_id] if isinstance(next_obs_dict, dict) else next_obs_dict
+            r_vec = reward_dict[a_id] if isinstance(reward_dict, dict) else reward_dict
+            act = action_dict[a_id]
+            o = obs_dict[a_id] if isinstance(obs_dict, dict) else obs_dict
 
-        total_rewards += reward_vec
-        obs = next_obs
+            omega = agent.pareto_fronts['high'].sample_preference()
+            agent.observe(o, act, r_vec, n_obs, done, omega)
+            step_reward_vec += r_vec
+
+        total_rewards += step_reward_vec
+        obs_dict = next_obs_dict
         step += 1
 
         # Train periodically
@@ -149,7 +167,7 @@ def meta_train(args):
     print(f"  Device: {'cuda' if torch.cuda.is_available() else 'cpu'}")
     print("=" * 70)
 
-    set_seed(args.seed)
+    
 
     # Configs
     mohrl_config = MOHRLConfig()
@@ -218,7 +236,7 @@ def meta_train(args):
 
         print(f"\n--- Meta Iteration {meta_iter + 1}/{args.meta_iters} ---")
         print(f"  Config: T1={config_dict['T1']}, T2={config_dict['T2']}, "
-              f"γ1={config_dict['gamma1']:.3f}, β12={config_dict['beta12']:.3f}")
+              f"gamma1={config_dict['gamma1']:.3f}, beta12={config_dict['beta12']:.3f}")
 
         # Step 4: Inner loop — K gradient steps
         # Save initial parameters for meta-gradient
@@ -240,21 +258,29 @@ def meta_train(args):
                   f"wait={ep_result['waiting_reward']:.3f}, "
                   f"queue={ep_result['queue_reward']:.3f})")
 
-        # Step 5: Compute meta-gradient (first-order approximation)
+        # Step 5: Compute true bilevel meta-gradient (REINFORCE)
         if args.ablation != 'no_meta':
-            # Evaluate J_inner after K steps
             config_output = meta_controller(descriptor_t, hard=False)
-
-            # Use inner-loop performance as meta-objective
             j_inner = torch.tensor(
                 np.mean(inner_rewards), dtype=torch.float32,
                 device=meta_config.device
             )
-
-            # Surrogate loss: maximize inner-loop return
-            # The configuration influences performance through the agent
-            # First-order approx: treat config as affecting reward directly
-            meta_loss = -j_inner
+            
+            # Baseline for REINFORCE
+            if not hasattr(meta_controller, 'baseline'):
+                meta_controller.baseline = j_inner.item()
+            else:
+                meta_controller.baseline = 0.9 * meta_controller.baseline + 0.1 * j_inner.item()
+            
+            advantage = j_inner - meta_controller.baseline
+            
+            # Get log prob of selected T1 and T2
+            T1_idx = meta_controller.T1_selector.candidates.index(config_dict['T1'])
+            T2_idx = meta_controller.T2_selector.candidates.index(config_dict['T2'])
+            
+            log_prob = torch.log(config_output['T1_probs'][0, T1_idx] + 1e-8) + torch.log(config_output['T2_probs'][0, T2_idx] + 1e-8)
+            
+            meta_loss = -log_prob * advantage.detach()
 
             # Add regularization for config diversity
             T1_entropy = -(config_output['T1_probs'] *
@@ -334,4 +360,6 @@ def _save_results(results: dict, save_dir: str):
 
 if __name__ == '__main__':
     args = parse_args()
-    meta_train(args)
+    for seed in args.seeds:
+        args.seed = seed
+        meta_train(args)
